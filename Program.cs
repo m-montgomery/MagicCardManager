@@ -8,6 +8,8 @@ namespace Magic
         static string InputFile = "";
         static string OutputFile = "";
 
+        static bool DownloadData = false;
+
         static void Main(string[] args)
         {
             // dotnet run -- -h
@@ -18,15 +20,20 @@ namespace Magic
             // define command line usage
             var dataSourceOption = new Option<FileInfo?>(
                 name: "--data",
-                description: "Data file for Magic cards (Scryfall JSON)"
+                description: "Scryfall JSON card data file. (Used as filename if --download selected)"
+            );
+            var dataDownloadOption = new Option<bool>(
+                name: "--download",
+                description: "Download new bulk data file from Scryfall? (True if --data not provided)",
+                getDefaultValue: () => false
             );
             var cardInputOption = new Option<FileInfo?>(
                 name: "--input",
-                description: "Source file for user cards (TCG CSV)"
+                description: "TCG CSV user cards file."
             );
             var cardOutputOption = new Option<FileInfo>(
                 name: "--output",
-                description: "Output file for organized user cards (CSV)",
+                description: "CSV output file for organized user cards.",
                 getDefaultValue: () => new FileInfo("results.csv")
             );
 
@@ -34,15 +41,16 @@ namespace Magic
             var rootCommand = new RootCommand("Magic card manager");
 
             rootCommand.AddOption(dataSourceOption);
+            rootCommand.AddOption(dataDownloadOption);
             rootCommand.AddOption(cardInputOption);
             rootCommand.AddOption(cardOutputOption);
 
-            rootCommand.SetHandler((data, input, output) => 
+            rootCommand.SetHandler((data, download, input, output) => 
                 {
-                    if (ProcessArgs(data, input, output))
+                    if (ProcessArgs(data, download, input, output))
                         RunCardManagement();
                 },
-                dataSourceOption, cardInputOption, cardOutputOption
+                dataSourceOption, dataDownloadOption, cardInputOption, cardOutputOption
             );
 
             rootCommand.Invoke(args);
@@ -50,13 +58,13 @@ namespace Magic
 
         static void PrintWarning(string message, bool includeUsage = false)
         {
-            Console.WriteLine("Warning: " + message);
+            Console.WriteLine("\nWarning: " + message);
             
             if (includeUsage)
                 Console.WriteLine("Run program with -h for usage directions.");
         }
 
-        static bool ProcessArgs(FileInfo? data, FileInfo? input, FileInfo output)
+        static bool ProcessArgs(FileInfo? data, bool download, FileInfo? input, FileInfo output)
         {
             // verify input source
             if (input == null)
@@ -72,22 +80,38 @@ namespace Magic
 
 
             // verify data source
+            DownloadData = download;
             if (data == null)
             {
-                PrintWarning("Data file for cards is a required argument.", includeUsage: true);
-                return false;
+                DownloadData = true; // default to downloading if no data file provided
             }
-            if (!File.Exists(data.FullName)) 
+            else
             {
-                PrintWarning($"Data file {data.Name} not found.", includeUsage: true);
-                return false;
+                DataFile = data.FullName;
+
+                // if not downloading, ensure data is valid file
+                if (!DownloadData && !File.Exists(data.FullName)) {
+                    PrintWarning($"Data file {data.Name} not found.", includeUsage: true);
+                    return false;
+                }
             }
-            DataFile = data.FullName;
 
 
             OutputFile = output.FullName;
 
             return true;
+        }
+
+        static bool DownloadCardData()
+        {
+            var handler = new ScryfallAPIHandler();
+            
+            if (string.IsNullOrEmpty(DataFile))
+                DataFile = handler.DefaultFilePath;
+            
+            var task = handler.DownloadCardData(DataFile);
+            task.Wait();
+            return task.Result;
         }
 
         static void RunCardManagement() 
@@ -102,6 +126,11 @@ namespace Magic
             }
             
             // import all card data from Scryfall
+            if (DownloadData && !DownloadCardData())
+            {
+                PrintWarning("No source data available; exiting program.");
+                return;
+            }
             if (!manager.ImportCardData(DataFile)) 
             {
                 PrintWarning("No source data to reference; exiting program.");
