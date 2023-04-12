@@ -1,59 +1,58 @@
-namespace Magic
+namespace Magic;
+
+class HTTPHandler
 {
-    class HTTPHandler
+    public static HTTPHandler Instance { get; } = new HTTPHandler();
+
+    private HttpClient Client;
+
+    private HTTPHandler() 
     {
-        public static HTTPHandler Instance { get; } = new HTTPHandler();
+        Client = new HttpClient();
+    }
 
-        private HttpClient Client;
-
-        private HTTPHandler() 
+    public async Task<string> Get(string uri)
+    {
+        try
         {
-            Client = new HttpClient();
+            Console.WriteLine($"GET {uri}");
+
+            var response = await Client.GetAsync(uri);
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadAsStringAsync();
+            }
+
+            Console.WriteLine("GET failed - " + response.StatusCode);
+            return "";
         }
-
-        public async Task<string> Get(string uri)
+        catch (Exception e)
         {
-            try
-            {
-                Console.WriteLine($"GET {uri}");
+            Console.WriteLine("GET failed");
+            Console.WriteLine(e);
+            return "";
+        }
+    }
 
-                var response = await Client.GetAsync(uri);
-                if (response.IsSuccessStatusCode)
-                {
-                    return await response.Content.ReadAsStringAsync();
-                }
+    public async Task<bool> DownloadFile(string uri, string destination)
+    {
+        try
+        {
+            Console.WriteLine($"Downloading file from {uri}");
+            var stream = await Client.GetStreamAsync(uri);
 
-                Console.WriteLine("GET failed - " + response.StatusCode);
-                return "";
-            }
-            catch (Exception e)
+            using (var fstream = File.Create(destination))
             {
-                Console.WriteLine("GET failed");
-                Console.WriteLine(e);
-                return "";
+                await stream.CopyToAsync(fstream);
+                Console.WriteLine($"Downloaded file to {destination}");
+                return true;
             }
         }
-
-        public async Task<bool> DownloadFile(string uri, string destination)
+        catch (Exception e)
         {
-            try
-            {
-                Console.WriteLine($"Downloading file from {uri}");
-                var stream = await Client.GetStreamAsync(uri);
-
-                using (var fstream = File.Create(destination))
-                {
-                    await stream.CopyToAsync(fstream);
-                    Console.WriteLine($"Downloaded file to {destination}");
-                    return true;
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine("Failed to download file");
-                Console.WriteLine(e);
-                return false;
-            }
+            Console.WriteLine("Failed to download file");
+            Console.WriteLine(e);
+            return false;
         }
     }
 }
