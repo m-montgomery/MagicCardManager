@@ -39,11 +39,6 @@ namespace Magic
 
         public ICollection<Card> Import(string source) 
         {
-            if (!File.Exists(source)) {
-                Console.WriteLine(source + " file not found");
-                return new List<Card>();
-            }
-
             try
             {
                 // read entries from TCG CSV with preliminary mapping
@@ -62,7 +57,8 @@ namespace Magic
             }
             catch (Exception e)
             {
-                Console.WriteLine("Failed to import from CSV", e);
+                Console.WriteLine("Failed to import from CSV");
+                Console.WriteLine(e);
                 return new List<Card>();
             }
         }
@@ -116,6 +112,7 @@ namespace Magic
             try 
             {
                 var lines = cards
+                    .OrderBy(c => c.Key)
                     .Select(c => CardToCSV(c.Key, cards))
                     .Prepend(CardOutputHeaders);
                 
@@ -124,7 +121,8 @@ namespace Magic
             }
             catch (Exception e)
             {
-                Console.WriteLine("Failed to export to CSV", e);
+                Console.WriteLine("Failed to export to CSV");
+                Console.WriteLine(e);
                 return false;
             }
         }

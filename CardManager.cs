@@ -140,7 +140,7 @@ namespace Magic
             {
                 var filename = Path.GetFileName(outputFile);
                 var filepath = Path.GetDirectoryName(outputFile) ?? "";
-                var failedOutputFile = Path.Combine("failed_" + filename, filepath);
+                var failedOutputFile = Path.Combine(filepath, "failed_" + filename);
 
                 if (OutputManager.Export(matchlessCards, failedOutputFile))
                     Console.WriteLine("\nExported matchless cards to " + failedOutputFile);

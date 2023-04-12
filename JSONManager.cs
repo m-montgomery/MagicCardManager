@@ -13,11 +13,6 @@ namespace Magic
 
         public ICollection<Card> Import(string source) 
         {
-            if (!File.Exists(source)) {
-                Console.WriteLine(source + " file not found");
-                return new List<Card>();
-            }
-
             try
             {   
                 var data = File.ReadAllText(source);
@@ -32,7 +27,8 @@ namespace Magic
             }
             catch (Exception e)
             {
-                Console.WriteLine("Failed to import from JSON", e);
+                Console.WriteLine("Failed to import from JSON");
+                Console.WriteLine(e);
                 return new List<Card>();
             }
         }        
