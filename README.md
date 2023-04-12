@@ -1,0 +1,1 @@
+Command line tool for managing Magic cards. Converts TCG collection list to Scryfall spreadsheet. 
