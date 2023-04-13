@@ -40,6 +40,9 @@ public class Card
     [JsonProperty("mana_cost")]
     public string Mana {get; set;}
 
+    [JsonProperty("image_uris")]
+    public Dictionary<string, string> ImageUris {get; set;}
+
     public Card() 
     {
         Name = "";
@@ -51,6 +54,7 @@ public class Card
         Mana = "";
         Foiled = false;
         Rarity = Rarity.Common;
+        ImageUris = new Dictionary<string, string>();
     }
 
     public string UniqueID()
@@ -92,6 +96,7 @@ public class Card
             Mana = this.Mana,
             TypeLine = this.TypeLine,
             Foiled = this.Foiled,
+            ImageUris = new Dictionary<string, string>(this.ImageUris),
         };
     }
 

@@ -2,15 +2,17 @@ using Newtonsoft.Json.Linq;
 
 namespace Magic;
 
-public class ScryfallAPIHandler
+public static class ScryfallAPIHandler
 {
-    private readonly string BaseURI = "https://api.scryfall.com";
-    private readonly string URI_BulkDataIndex = "/bulk-data";
-    private readonly string CardDataID = "default_cards";
+    private static readonly string BaseURI = "https://api.scryfall.com";
+    private static readonly string URI_BulkDataIndex = "/bulk-data";
 
-    public string DefaultFilePath => "ScryfallCardData.json";
+    private static readonly string CardDataID = "default_cards";
+    private static readonly string CardImageID = "large";
 
-    private async Task<string> GetBulkDataUri()
+    public static string DefaultFilePath => "ScryfallCardData.json";
+
+    private static async Task<string> GetBulkDataUri()
     {
         var bulkDataInfo = await HTTPHandler.Instance.Get(BaseURI + URI_BulkDataIndex);
         
@@ -36,7 +38,7 @@ public class ScryfallAPIHandler
         return "";
     }
 
-    public async Task<bool> DownloadCardData(string destination)
+    public static async Task<bool> DownloadCardData(string destination)
     {
         Console.WriteLine("\nDownloading data from Scryfall...");
 
@@ -47,5 +49,104 @@ public class ScryfallAPIHandler
 
         // get latest bulk data file
         return await HTTPHandler.Instance.DownloadFile(uri, destination);
+    }
+
+    public static async Task<bool> DownloadCardImages(ICollection<List<Card>> cardsBySet, string path)
+    {
+        Console.WriteLine("\nDownloading images from Scryfall...");
+
+        if (!PrepareImageFolders(cardsBySet, path))
+            return false;
+
+        var toDownload = PrepareImagesForDownload(cardsBySet, path, out int skipped);
+
+        // download all images
+        var downloaded = 0;
+        var semaphore = new SemaphoreSlim(initialCount: 10, maxCount: 10);
+        var tasks = toDownload.Select(async entry =>
+        {
+            await semaphore.WaitAsync();
+
+            try
+            {
+                if (await HTTPHandler.Instance.DownloadFile(entry.Value, entry.Key))
+                    Interlocked.Increment(ref downloaded);
+                
+                await Task.Delay(1000); // rate-limit per Scryfall request
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+        await Task.WhenAll(tasks);
+        
+        Console.WriteLine($"Downloaded {downloaded} images; skipped {skipped} already present");
+
+        return downloaded + skipped > 0;
+    }
+
+    private static bool PrepareImageFolders(ICollection<List<Card>> cardsBySet, string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+
+            // one folder per set
+            foreach (var cardSet in cardsBySet)
+            {
+                var cardTemplate = cardSet.FirstOrDefault();
+                if (cardTemplate != null)
+                {
+                    Directory.CreateDirectory(Path.Combine(path, cardTemplate.SetCode));
+                }
+            }
+            return true;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("Failed to create image directories");
+            Console.WriteLine(e);
+            return false;
+        }
+    }
+
+    private static Dictionary<string, string> PrepareImagesForDownload(ICollection<List<Card>> cardsBySet, string path, out int skipped)
+    {
+        skipped = 0;
+        var toDownload = new Dictionary<string, string>();
+        
+        foreach (var cardSet in cardsBySet)
+        {
+            foreach (Card card in cardSet)
+            {
+                var imageName = $"{card.SetCode}_{card.SetID}{card.Variant}.jpg";
+                var fileName = Path.Combine(path, card.SetCode, imageName);
+
+                // skip duplicate cards
+                if (toDownload.ContainsKey(fileName)) 
+                    continue;
+
+                // don't overwrite already-downloaded images
+                if (File.Exists(fileName)) 
+                {
+                    skipped++;
+                    continue;
+                }
+
+                // determine image URI
+                var imageUri = card.ImageUris
+                    .Where(uri => uri.Key == CardImageID)
+                    .Select(uri => uri.Value)
+                    .FirstOrDefault();
+
+                if (string.IsNullOrEmpty(imageUri))
+                    Console.WriteLine($"No image URI found for card {imageName}");
+                else
+                    toDownload.Add(fileName, imageUri);
+            }
+        }
+
+        return toDownload;
     }
 }

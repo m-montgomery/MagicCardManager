@@ -2,12 +2,12 @@ namespace Magic;
 
 public class CardManager
 {
-    IDataManager CardDataInputManager;
-    IDataManager UserCardInputManager;
-    IDataManager OutputManager;
+    private IDataManager CardDataInputManager;
+    private IDataManager UserCardInputManager;
+    private IDataManager OutputManager;
 
-    Dictionary<string, List<Card>> UserCards;    // key: card set name + card name + card variant
-    Dictionary<string, List<Card>> ScryfallData; // key: set name
+    private Dictionary<string, List<Card>> UserCards;    // key: card set name + card name + card variant
+    private Dictionary<string, List<Card>> ScryfallData; // key: set name
 
     public CardManager(IDataManager dataInputManager, IDataManager inputManager, IDataManager outputManager)
     {
@@ -45,7 +45,14 @@ public class CardManager
         return cardData.Any();
     }
 
-    public bool MatchCards(string outputFile) 
+    public bool DownloadCardData(string dataFile)
+    {
+        var task = ScryfallAPIHandler.DownloadCardData(dataFile);
+        task.Wait();
+        return task.Result;
+    }
+
+    public bool MatchCards(string outputFile, bool downloadImages) 
     {
         Console.WriteLine("\nMatching cards...\n");
 
@@ -76,7 +83,14 @@ public class CardManager
         Console.WriteLine($"\nMatched {matchedCards.Sum(entry => entry.Value.Count)} cards; " +
                             $"missing matches for {matchlessCards.Sum(entry => entry.Value.Count)} cards");
 
-        return ExportCards(outputFile, matchedCards, matchlessCards);
+        // export cards to file
+        var exported = ExportCards(outputFile, matchedCards, matchlessCards);
+
+        // download images for matched cards
+        if (downloadImages && !DownloadCardImages(matchedCards, outputFile))
+            Console.WriteLine("\nWarning: Failed to download images");
+
+        return exported;
     }
 
     private List<Card> GenerateMatches(Card cardMatch, List<Card> uniqueCardSet)
@@ -147,5 +161,15 @@ public class CardManager
         }
 
         return exportSuccess;
+    }
+
+    private bool DownloadCardImages(Dictionary<string, List<Card>> cards, string outputFile)
+    {
+        var output = new FileInfo(outputFile);
+        var path = Path.Combine(output.DirectoryName ?? "", "Images");
+
+        var task = ScryfallAPIHandler.DownloadCardImages(cards.Values, path);
+        task.Wait();
+        return task.Result;
     }
 }

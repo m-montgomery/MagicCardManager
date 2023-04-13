@@ -9,6 +9,7 @@ internal class Program
     static string OutputFile = "";
 
     static bool DownloadData = false;
+    static bool DownloadImages = false;
 
     static void Main(string[] args)
     {
@@ -27,6 +28,11 @@ internal class Program
             description: "Download new bulk data file from Scryfall? (True if --data not provided)",
             getDefaultValue: () => false
         );
+        var imageDownloadOption = new Option<bool>(
+            name: "--download-images",
+            description: "Download card images from Scryfall? (Stored in output folder)",
+            getDefaultValue: () => false
+        );
         var cardInputOption = new Option<FileInfo?>(
             name: "--input",
             description: "TCG CSV user cards file."
@@ -34,7 +40,7 @@ internal class Program
         var cardOutputOption = new Option<FileInfo>(
             name: "--output",
             description: "CSV output file for organized user cards.",
-            getDefaultValue: () => new FileInfo("results.csv")
+            getDefaultValue: () => new FileInfo("output/results.csv")
         );
 
 
@@ -42,15 +48,16 @@ internal class Program
 
         rootCommand.AddOption(dataSourceOption);
         rootCommand.AddOption(dataDownloadOption);
+        rootCommand.AddOption(imageDownloadOption);
         rootCommand.AddOption(cardInputOption);
         rootCommand.AddOption(cardOutputOption);
 
-        rootCommand.SetHandler((data, download, input, output) => 
+        rootCommand.SetHandler((data, download, images, input, output) => 
             {
-                if (ProcessArgs(data, download, input, output))
+                if (ProcessArgs(data, download, images, input, output))
                     RunCardManagement();
             },
-            dataSourceOption, dataDownloadOption, cardInputOption, cardOutputOption
+            dataSourceOption, dataDownloadOption, imageDownloadOption, cardInputOption, cardOutputOption
         );
 
         rootCommand.Invoke(args);
@@ -64,8 +71,11 @@ internal class Program
             Console.WriteLine("Run program with -h for usage directions.");
     }
 
-    static bool ProcessArgs(FileInfo? data, bool download, FileInfo? input, FileInfo output)
+    static bool ProcessArgs(FileInfo? data, bool download, bool images, FileInfo? input, FileInfo output)
     {
+        OutputFile = output.FullName;
+        DownloadImages = images;
+
         // verify input source
         if (input == null)
         {
@@ -95,49 +105,36 @@ internal class Program
                 return false;
             }
         }
-
-
-        OutputFile = output.FullName;
+        if (string.IsNullOrEmpty(DataFile))
+            DataFile = ScryfallAPIHandler.DefaultFilePath;
 
         return true;
     }
 
-    static bool DownloadCardData()
-    {
-        var handler = new ScryfallAPIHandler();
-        
-        if (string.IsNullOrEmpty(DataFile))
-            DataFile = handler.DefaultFilePath;
-        
-        var task = handler.DownloadCardData(DataFile);
-        task.Wait();
-        return task.Result;
-    }
-
     static void RunCardManagement() 
     {
-        var manager = new CardManager(JSONManager.Instance, CSVManager.Instance, CSVManager.Instance);
+        var cardManager = new CardManager(JSONManager.Instance, CSVManager.Instance, CSVManager.Instance);
 
         // import cards from user's TCG data
-        if (!manager.ImportUserCards(InputFile)) 
+        if (!cardManager.ImportUserCards(InputFile)) 
         {
             PrintWarning("No user data to merge; exiting program.");
             return;
         }
         
         // import all card data from Scryfall
-        if (DownloadData && !DownloadCardData())
+        if (DownloadData && !cardManager.DownloadCardData(DataFile))
         {
             PrintWarning("No source data available; exiting program.");
             return;
         }
-        if (!manager.ImportCardData(DataFile)) 
+        if (!cardManager.ImportCardData(DataFile)) 
         {
             PrintWarning("No source data to reference; exiting program.");
             return;
         }
 
         // match up user cards with Scryfall data; export to file
-        manager.MatchCards(OutputFile);
+        cardManager.MatchCards(OutputFile, DownloadImages);
     }
 }

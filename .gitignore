@@ -4,3 +4,6 @@ obj/*
 .vscode/*
 **/*.csv
 **/*.json
+**/*.jpg
+**/*.png
+
