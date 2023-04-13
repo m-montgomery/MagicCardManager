@@ -11,7 +11,7 @@ public class CSVManager : IDataManager
     
     public static readonly string CardOutputHeaders = "Set,Num,#,# Foil,Name,Rarity,Mana Cost,Type Line";
 
-    private readonly string TCGNameRegex = @"([a-zA-Z\-/', ]+[a-zA-Z])( ?\([^)]+\))?( - Full Art)?( - \[Foil\])?";
+    private readonly string TCGNameRegex = @"([a-zA-Z\-/', ]+[a-zA-Z]-?)( ?\([^)]+\))?( - Full Art)?( - \[Foil\])?";
     private readonly string TCGChecklistRegex = @"Check ?[lL]ist Card - ([a-zA-Z\-/', ]+[a-zA-Z])";
     private readonly string TCGVariantRegex = @"\(([^)]+)\)";
 
