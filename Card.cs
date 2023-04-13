@@ -17,6 +17,9 @@ public class Card
     [JsonProperty("name")]
     public string Name {get; set;}
 
+    public int Count {get; set;}
+    public int CountFoiled {get; set;}
+
     [JsonProperty("type_line")]
     public string TypeLine {get; set;}
 
@@ -34,9 +37,6 @@ public class Card
     [JsonProperty("rarity")]
     public Rarity Rarity {get; set;}
 
-    [JsonProperty("foil")]
-    public bool Foiled {get; set;}
-
     [JsonProperty("mana_cost")]
     public string Mana {get; set;}
 
@@ -52,7 +52,6 @@ public class Card
         Variant = "";
         TypeLine = "";
         Mana = "";
-        Foiled = false;
         Rarity = Rarity.Common;
         ImageUris = new Dictionary<string, string>();
     }
@@ -79,7 +78,8 @@ public class Card
             $"Rarity: {Rarity}",
             $"Mana: {Mana}",
             $"TypeLine: {TypeLine}",
-            $"Foiled: {Foiled}",
+            $"Regular: {Count}",
+            $"Foiled: {CountFoiled}",
         };
         return string.Join(", ", props);
     }
@@ -95,7 +95,8 @@ public class Card
             Rarity = this.Rarity,
             Mana = this.Mana,
             TypeLine = this.TypeLine,
-            Foiled = this.Foiled,
+            Count = this.Count,
+            CountFoiled = this.CountFoiled,
             ImageUris = new Dictionary<string, string>(this.ImageUris),
         };
     }

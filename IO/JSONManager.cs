@@ -49,7 +49,7 @@ public class JSONManager : IDataManager
         }
     }
 
-    public bool Export(IDictionary<string, List<Card>> cards, string destination) 
+    public bool Export(IDictionary<string, Card> cards, string destination) 
     {
         // not implemented
         return false;

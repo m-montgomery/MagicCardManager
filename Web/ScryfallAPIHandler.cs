@@ -51,14 +51,14 @@ public static class ScryfallAPIHandler
         return await HTTPHandler.Instance.DownloadFile(uri, destination);
     }
 
-    public static async Task<bool> DownloadCardImages(ICollection<List<Card>> cardsBySet, string path)
+    public static async Task<bool> DownloadCardImages(ICollection<Card> cards, string path)
     {
         Console.WriteLine("\nDownloading images from Scryfall...");
 
-        if (!PrepareImageFolders(cardsBySet, path))
+        if (!PrepareImageFolders(cards, path))
             return false;
 
-        var toDownload = PrepareImagesForDownload(cardsBySet, path, out int skipped);
+        var toDownload = PrepareImagesForDownload(cards, path, out int skipped);
 
         // download all images
         var downloaded = 0;
@@ -86,20 +86,17 @@ public static class ScryfallAPIHandler
         return downloaded + skipped > 0;
     }
 
-    private static bool PrepareImageFolders(ICollection<List<Card>> cardsBySet, string path)
+    private static bool PrepareImageFolders(ICollection<Card> cards, string path)
     {
         try
         {
             Directory.CreateDirectory(path);
 
             // one folder per set
-            foreach (var cardSet in cardsBySet)
+            var cardSets = cards.Select(c => c.SetCode).Distinct();
+            foreach (var cardSet in cardSets)
             {
-                var cardTemplate = cardSet.FirstOrDefault();
-                if (cardTemplate != null)
-                {
-                    Directory.CreateDirectory(Path.Combine(path, cardTemplate.SetCode));
-                }
+                Directory.CreateDirectory(Path.Combine(path, cardSet));
             }
             return true;
         }
@@ -111,40 +108,37 @@ public static class ScryfallAPIHandler
         }
     }
 
-    private static Dictionary<string, string> PrepareImagesForDownload(ICollection<List<Card>> cardsBySet, string path, out int skipped)
+    private static Dictionary<string, string> PrepareImagesForDownload(ICollection<Card> cards, string path, out int skipped)
     {
         skipped = 0;
         var toDownload = new Dictionary<string, string>();
         
-        foreach (var cardSet in cardsBySet)
+        foreach (Card card in cards)
         {
-            foreach (Card card in cardSet)
+            var imageName = $"{card.SetCode}_{card.SetID}{card.Variant}.jpg";
+            var fileName = Path.Combine(path, card.SetCode, imageName);
+
+            // skip duplicate cards
+            if (toDownload.ContainsKey(fileName)) 
+                continue;
+
+            // don't overwrite already-downloaded images
+            if (File.Exists(fileName)) 
             {
-                var imageName = $"{card.SetCode}_{card.SetID}{card.Variant}.jpg";
-                var fileName = Path.Combine(path, card.SetCode, imageName);
-
-                // skip duplicate cards
-                if (toDownload.ContainsKey(fileName)) 
-                    continue;
-
-                // don't overwrite already-downloaded images
-                if (File.Exists(fileName)) 
-                {
-                    skipped++;
-                    continue;
-                }
-
-                // determine image URI
-                var imageUri = card.ImageUris
-                    .Where(uri => uri.Key == CardImageID)
-                    .Select(uri => uri.Value)
-                    .FirstOrDefault();
-
-                if (string.IsNullOrEmpty(imageUri))
-                    Console.WriteLine($"No image URI found for card {imageName}");
-                else
-                    toDownload.Add(fileName, imageUri);
+                skipped++;
+                continue;
             }
+
+            // determine image URI
+            var imageUri = card.ImageUris
+                .Where(uri => uri.Key == CardImageID)
+                .Select(uri => uri.Value)
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(imageUri))
+                Console.WriteLine($"No image URI found for card {imageName}");
+            else
+                toDownload.Add(fileName, imageUri);
         }
 
         return toDownload;

@@ -6,7 +6,7 @@ public class CardManager
     private IDataManager UserCardInputManager;
     private IDataManager OutputManager;
 
-    private Dictionary<string, List<Card>> UserCards;    // key: card set name + card name + card variant
+    private List<Card> UserCards;
     private Dictionary<string, List<Card>> ScryfallData; // key: set name
 
     public CardManager(IDataManager dataInputManager, IDataManager inputManager, IDataManager outputManager)
@@ -15,7 +15,7 @@ public class CardManager
         UserCardInputManager = inputManager;
         OutputManager = outputManager;
 
-        UserCards = new Dictionary<string, List<Card>>();
+        UserCards = new List<Card>();
         ScryfallData = new Dictionary<string, List<Card>>();
     }
 
@@ -24,10 +24,23 @@ public class CardManager
         // import TCG
         Console.WriteLine("\nImporting cards from user collection at " + source);
         var userCards = UserCardInputManager.Import(source).ToList();
-        Console.WriteLine($"\nLoaded {userCards.Count} cards");
+        Console.WriteLine($"\nLoaded {userCards.Count} card entries");
 
-        // organize for processing improvement
-        UserCards = userCards.GroupBy(card => card.UniqueID()).ToDictionary(g => g.Key, g => g.ToList());
+        // collapse similar cards into single card object
+        var totalCardCount = 0;
+        foreach (var group in userCards.GroupBy(card => card.UniqueID()))
+        {
+            var uniqueCardSet = group.ToList();
+            var uniqueCard = uniqueCardSet.First();
+
+            // tally card count and foiled card count
+            uniqueCard.Count = uniqueCardSet.Where(card => card.Count > 0).Sum(card => card.Count);
+            uniqueCard.CountFoiled = uniqueCardSet.Where(card => card.CountFoiled > 0).Sum(card => card.CountFoiled);
+
+            UserCards.Add(uniqueCard);
+            totalCardCount += uniqueCard.Count + uniqueCard.CountFoiled;
+        }
+        Console.WriteLine($"Loaded {totalCardCount} total cards");
         
         return userCards.Any();
     }
@@ -56,32 +69,34 @@ public class CardManager
     {
         Console.WriteLine("\nMatching cards...\n");
 
-        var matchedCards = new Dictionary<string, List<Card>>();
-        var matchlessCards = new Dictionary<string, List<Card>>();
+        var matchedCards = new Dictionary<string, Card>();
+        var matchlessCards = new Dictionary<string, Card>();
 
         // match up TCG cards with Scryfall cards
-        foreach (var uniqueCardSet in UserCards)
+        foreach (var card in UserCards)
         {
             // search for match from Scryfall data
-            var cardTemplate = uniqueCardSet.Value.First();
-            var setName = cardTemplate.Set.ToUpper();
+            var setName = card.Set.ToUpper();
             var setNames = new List<string> { setName, $"{setName} TOKENS", $"{setName} PROMOS" };
-            Card? match = SearchForMatch(cardTemplate, setNames);
+            Card? match = SearchForMatch(card, setNames);
 
             // store data for export
             if (match != null)
             {
                 var cardMatch = ((Card)match).Copy();
-                matchedCards[cardMatch.UniqueID()] = GenerateMatches(cardMatch, uniqueCardSet.Value);
+                cardMatch.Count = card.Count;
+                cardMatch.CountFoiled = card.CountFoiled;
+                
+                matchedCards[cardMatch.UniqueID()] = cardMatch;
             }
             else
             {
-                matchlessCards[uniqueCardSet.Key] = uniqueCardSet.Value.Select(card => card.Copy()).ToList();
+                matchlessCards[card.UniqueID()] = card;
             }
         }
 
-        Console.WriteLine($"\nMatched {matchedCards.Sum(entry => entry.Value.Count)} cards; " +
-                            $"missing matches for {matchlessCards.Sum(entry => entry.Value.Count)} cards");
+        Console.WriteLine($"\nMatched {matchedCards.Sum(entry => entry.Value.Count + entry.Value.CountFoiled)} cards; " +
+                            $"missing matches for {matchlessCards.Sum(entry => entry.Value.Count + entry.Value.CountFoiled)} cards");
 
         // export cards to file
         var exported = ExportCards(outputFile, matchedCards, matchlessCards);
@@ -91,29 +106,6 @@ public class CardManager
             Console.WriteLine("\nWarning: Failed to download images");
 
         return exported;
-    }
-
-    private List<Card> GenerateMatches(Card cardMatch, List<Card> uniqueCardSet)
-    {
-        var cardMatches = new List<Card>();
-
-        // separate regular from foiled
-        var cardMatchFoiled = cardMatch.Copy();
-        cardMatch.Foiled = false;
-        cardMatchFoiled.Foiled = true;
-        var foiledCount = uniqueCardSet.Where(card => card.Foiled).Count();
-
-        for (var _ = 0; _ < uniqueCardSet.Count - foiledCount; _++)
-        {
-            cardMatches.Add(cardMatch);
-        }
-
-        for (var _ = 0; _ < foiledCount; _++)
-        {
-            cardMatches.Add(cardMatchFoiled);
-        }
-
-        return cardMatches;
     }
 
     private Card? SearchForMatch(Card card, List<string> sets)
@@ -138,8 +130,13 @@ public class CardManager
         return null;
     }
 
-    private bool ExportCards(string outputFile, Dictionary<string, List<Card>> matchedCards, Dictionary<string, List<Card>> matchlessCards)
+    private bool ExportCards(string outputFile, Dictionary<string, Card> matchedCards, Dictionary<string, Card> matchlessCards)
     {
+        // init output folder
+        var outputFileInfo = new FileInfo(outputFile);
+        if (!string.IsNullOrEmpty(outputFileInfo.DirectoryName))
+            Directory.CreateDirectory(outputFileInfo.DirectoryName);
+
         // export matches
         var exportSuccess = false;
         if (matchedCards.Any())
@@ -152,8 +149,8 @@ public class CardManager
         // export match failures
         if (matchlessCards.Any())
         {
-            var filename = Path.GetFileName(outputFile);
-            var filepath = Path.GetDirectoryName(outputFile) ?? "";
+            var filename = outputFileInfo.Name;
+            var filepath = outputFileInfo.DirectoryName ?? "";
             var failedOutputFile = Path.Combine(filepath, "failed_" + filename);
 
             if (OutputManager.Export(matchlessCards, failedOutputFile))
@@ -163,7 +160,7 @@ public class CardManager
         return exportSuccess;
     }
 
-    private bool DownloadCardImages(Dictionary<string, List<Card>> cards, string outputFile)
+    private bool DownloadCardImages(Dictionary<string, Card> cards, string outputFile)
     {
         var output = new FileInfo(outputFile);
         var path = Path.Combine(output.DirectoryName ?? "", "Images");

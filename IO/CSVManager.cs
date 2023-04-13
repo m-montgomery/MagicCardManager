@@ -50,7 +50,7 @@ public class CSVManager : IDataManager
             // convert CSV entries to Card object(s)
             var cards = parsedResults
                 .Where(c => c.IsValid && c.Result.Count > 0)
-                .SelectMany(c => ProcessCard(c.Result))
+                .Select(c => ProcessCard(c.Result))
                 .ToList();
 
             return cards;
@@ -63,12 +63,14 @@ public class CSVManager : IDataManager
         }
     }
 
-    private ICollection<Card> ProcessCard(TCGCard entry)
+    private Card ProcessCard(TCGCard entry)
     {
         var name = entry.Name.Replace("Token", "").Trim(); // ignore 'Token'
         var set = entry.Set.Trim();
         var variant = "";
         var foiled = false;
+        var count = entry.Count;
+        var foiledCount = 0;
 
         // checklist card special name case
         var match = Regex.Match(name, TCGChecklistRegex);
@@ -92,28 +94,30 @@ public class CSVManager : IDataManager
             }
         }
 
-        // generate cards
-        var cards = new List<Card>();
-        for (int _ = 0; _ < entry.Count; _++)
+        // track foiled cards as separate count
+        if (foiled)
         {
-            cards.Add(new Card()
-            {
-                Name = name,
-                Set = set,
-                Variant = variant,
-                Foiled = foiled,
-            });
+            count = 0;
+            foiledCount = entry.Count;
         }
-        return cards;
+
+        return new Card()
+        {
+            Name = name,
+            Set = set,
+            Variant = variant,
+            Count = count,
+            CountFoiled = foiledCount,
+        };
     }
 
-    public bool Export(IDictionary<string, List<Card>> cards, string destination) 
+    public bool Export(IDictionary<string, Card> cards, string destination) 
     {
         try 
         {
             var lines = cards
                 .OrderBy(c => c.Key)
-                .Select(c => CardToCSV(c.Key, cards))
+                .Select(c => CardToCSV(c.Value))
                 .Prepend(CardOutputHeaders);
             
             File.WriteAllLines(destination, lines);
@@ -127,19 +131,13 @@ public class CSVManager : IDataManager
         }
     }
 
-    private string CardToCSV(string key, IDictionary<string, List<Card>> cards)
+    private string CardToCSV(Card card)
     {
-        var uniqueCardset = cards[key];
-        var cardTemplate = uniqueCardset.FirstOrDefault();
-        if (cardTemplate == null)
-            return "";
-        
-        var set = cardTemplate.SetCode == "" ? cardTemplate.Set : cardTemplate.SetCode; // fall back on set name for matchless cards
-        var setID = cardTemplate.SetID + cardTemplate.Variant;
-        var rarity = cardTemplate.Rarity.ToString().Substring(0, 1);
-        var foiledCount = uniqueCardset.Where(card => card.Foiled).Count();
+        var set = card.SetCode == "" ? card.Set : card.SetCode; // fall back on set name for matchless cards
+        var setID = card.SetID + card.Variant;
+        var rarity = card.Rarity.ToString().Substring(0, 1);
 
-        return $"{set},{setID},{uniqueCardset.Count - foiledCount},{foiledCount}," +
-                $"\"{cardTemplate.Name}\",{rarity},{cardTemplate.Mana},\"{cardTemplate.TypeLine}\"";
+        return $"{set},{setID},{card.Count},{card.CountFoiled}," +
+                $"\"{card.Name}\",{rarity},{card.Mana},\"{card.TypeLine}\"";
     }
 }
