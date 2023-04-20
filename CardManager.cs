@@ -19,12 +19,18 @@ public class CardManager
         ScryfallData = new Dictionary<string, List<Card>>();
     }
 
-    public bool ImportUserCards(string source) 
+    public bool ImportUserCards(string source, string corrections) 
     {
         // import TCG
         Console.WriteLine("\nImporting cards from user collection at " + source);
         var userCards = UserCardInputManager.Import(source).ToList();
         Console.WriteLine($"\nLoaded {userCards.Count} card entries");
+
+        // apply corrections to cards
+        if (!string.IsNullOrEmpty(corrections))
+        {
+            ApplyUserCardCorrections(userCards, corrections);
+        }
 
         // collapse similar cards into single card object
         var totalCardCount = 0;
@@ -43,6 +49,38 @@ public class CardManager
         Console.WriteLine($"Loaded {totalCardCount} total cards");
         
         return userCards.Any();
+    }
+
+    private void ApplyUserCardCorrections(List<Card> cards, string correctionFile)
+    {
+        Console.WriteLine("\nImporting corrections for user collection from " + correctionFile);
+        var corrections = UserCardInputManager.ImportCorrections(correctionFile);
+        Console.WriteLine($"\nLoaded {corrections.Count} card entry corrections");
+
+        foreach (var correction in corrections)
+        {
+            // find cards based on name, set, and variant if applicable
+            var matchedCards = cards
+                .Where(c => c.Name == correction.Name 
+                         && c.Set  == correction.Set);
+            
+            if (!string.IsNullOrEmpty(correction.Variant))
+                matchedCards = matchedCards
+                .Where(c => c.Variant == correction.Variant);
+
+            foreach (var card in matchedCards)
+            {
+                Console.WriteLine($"Correcting card details for {card.Name} ({card.Set})");
+
+                card.Name = correction.CorrectedName;
+                card.Set = correction.CorrectedSet;
+
+                // either provide new variant or clear falsely imported variant
+                if (!string.IsNullOrEmpty(correction.CorrectedVariant)
+                 || !string.IsNullOrEmpty(correction.Variant))
+                    card.Variant = correction.CorrectedVariant;
+            }
+        }
     }
     
     public bool ImportCardData(string source) 
@@ -125,7 +163,7 @@ public class CardManager
             {
                 return finalists.FirstOrDefault();
             }
-            Console.WriteLine($"Found 0 candidate(s) for card '{card.Name}' in set '{set}'");
+            //Console.WriteLine($"Found 0 candidate(s) for card '{card.Name}' in set '{set}'");
         }
         return null;
     }

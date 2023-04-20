@@ -7,6 +7,7 @@ internal class Program
     static string DataFile = "";
     static string InputFile = "";
     static string OutputFile = "";
+    static string CorrectionFile = "";
 
     static bool DownloadData = false;
     static bool DownloadImages = false;
@@ -37,6 +38,10 @@ internal class Program
             name: "--input",
             description: "TCG CSV user cards file."
         );
+        var correctionInputOption = new Option<FileInfo?>(
+            name: "--corrections",
+            description: "CSV with corrections for TCG user cards file."
+        );
         var cardOutputOption = new Option<FileInfo>(
             name: "--output",
             description: "CSV output file for organized user cards.",
@@ -50,14 +55,15 @@ internal class Program
         rootCommand.AddOption(dataDownloadOption);
         rootCommand.AddOption(imageDownloadOption);
         rootCommand.AddOption(cardInputOption);
+        rootCommand.AddOption(correctionInputOption);
         rootCommand.AddOption(cardOutputOption);
 
-        rootCommand.SetHandler((data, download, images, input, output) => 
+        rootCommand.SetHandler((data, download, images, input, corrections, output) => 
             {
-                if (ProcessArgs(data, download, images, input, output))
+                if (ProcessArgs(data, download, images, input, corrections, output))
                     RunCardManagement();
             },
-            dataSourceOption, dataDownloadOption, imageDownloadOption, cardInputOption, cardOutputOption
+            dataSourceOption, dataDownloadOption, imageDownloadOption, cardInputOption, correctionInputOption, cardOutputOption
         );
 
         rootCommand.Invoke(args);
@@ -71,7 +77,7 @@ internal class Program
             Console.WriteLine("Run program with -h for usage directions.");
     }
 
-    static bool ProcessArgs(FileInfo? data, bool download, bool images, FileInfo? input, FileInfo output)
+    static bool ProcessArgs(FileInfo? data, bool download, bool images, FileInfo? input, FileInfo? corrections, FileInfo output)
     {
         OutputFile = output.FullName;
         DownloadImages = images;
@@ -88,6 +94,15 @@ internal class Program
         }
         InputFile = input.FullName;
 
+        // verify corrections
+        if (corrections != null)
+        {
+            if (!File.Exists(corrections.FullName)) {
+                PrintWarning($"Corrections file {corrections.Name} not found.", includeUsage: true);
+                return false;
+            }
+            CorrectionFile = corrections.FullName;
+        }
 
         // verify data source
         DownloadData = download;
@@ -116,7 +131,7 @@ internal class Program
         var cardManager = new CardManager(JSONManager.Instance, CSVManager.Instance, CSVManager.Instance);
 
         // import cards from user's TCG data
-        if (!cardManager.ImportUserCards(InputFile)) 
+        if (!cardManager.ImportUserCards(InputFile, CorrectionFile)) 
         {
             PrintWarning("No user data to merge; exiting program.");
             return;

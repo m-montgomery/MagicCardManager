@@ -12,7 +12,7 @@ public class CSVManager : IDataManager
     public static readonly string CardOutputHeaders = "Set,Num,#,# Foil,Name,Rarity,Mana Cost,Type Line";
 
     private readonly string TCGNameRegex = @"([a-zA-Z\-/', ]+[a-zA-Z]-?)( ?\([^)]+\))?( - Full Art)?( - \[Foil\])?";
-    private readonly string TCGChecklistRegex = @"Check ?[lL]ist Card - ([a-zA-Z\-/', ]+[a-zA-Z])";
+    private readonly string TCGChecklistRegex = @"Check ?[lL]ist Card - (\([^)]+\))? ?([0-9a-zA-Z\-/', ]+[0-9a-zA-Z])";
     private readonly string TCGVariantRegex = @"\(([^)]+)\)";
 
 
@@ -36,6 +36,18 @@ public class CSVManager : IDataManager
             MapProperty(5, x => x.Set);
         }
     }
+    internal class TCGCardCorrectionMap : CsvMapping<CardCorrection>
+    {
+        public TCGCardCorrectionMap() : base()
+        {
+            MapProperty(0, x => x.Name);
+            MapProperty(1, x => x.Set);
+            MapProperty(2, x => x.Variant);
+            MapProperty(3, x => x.CorrectedName);
+            MapProperty(4, x => x.CorrectedSet);
+            MapProperty(5, x => x.CorrectedVariant);
+        }
+    }
 
     public ICollection<Card> Import(string source) 
     {
@@ -45,9 +57,9 @@ public class CSVManager : IDataManager
             var parserOptions = new CsvParserOptions(true, ',');
             var parser = new CsvParser<TCGCard>(parserOptions, new TCGCardMap());
 
-            var parsedResults = parser.ReadFromFile(source, Encoding.ASCII);
+            var parsedResults = parser.ReadFromFile(source, Encoding.UTF8);
 
-            // convert CSV entries to Card object(s)
+            // convert CSV entries to Card objects
             var cards = parsedResults
                 .Where(c => c.IsValid && c.Result.Count > 0)
                 .Select(c => ProcessCard(c.Result))
@@ -76,7 +88,11 @@ public class CSVManager : IDataManager
         var match = Regex.Match(name, TCGChecklistRegex);
         if (match.Success)
         {
-            name = match.Groups[1].Value + " Checklist";
+            name = match.Groups[2].Value + " Checklist";
+
+            var variantMatch = Regex.Match(match.Groups[1].Value, TCGVariantRegex);
+            if (variantMatch.Success)
+                variant = variantMatch.Groups[1].Value;
         }
         else
         {
@@ -109,6 +125,45 @@ public class CSVManager : IDataManager
             Count = count,
             CountFoiled = foiledCount,
         };
+    }
+
+    public ICollection<CardCorrection> ImportCorrections(string source)
+    {
+        try
+        {
+            // read entries from CSV
+            var parserOptions = new CsvParserOptions(true, ',');
+            var parser = new CsvParser<CardCorrection>(parserOptions, new TCGCardCorrectionMap());
+
+            var parsedResults = parser.ReadFromFile(source, Encoding.UTF8);
+
+            // convert CSV entries to CardCorrection objects
+            var corrections = parsedResults
+                .Where(c => c.IsValid)
+                .Select(c => c.Result)
+                .ToList();
+
+            ProcessCorrections(corrections);
+
+            return corrections;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("Failed to import corrections from CSV");
+            Console.WriteLine(e);
+            return new List<CardCorrection>();
+        }
+    }
+
+    private void ProcessCorrections(ICollection<CardCorrection> corrections)
+    {
+        foreach (var correction in corrections)
+        {
+            if (string.IsNullOrEmpty(correction.CorrectedName))
+                correction.CorrectedName = correction.Name;
+            if (string.IsNullOrEmpty(correction.CorrectedSet))
+                correction.CorrectedSet = correction.Set;
+        }
     }
 
     public bool Export(IDictionary<string, Card> cards, string destination) 

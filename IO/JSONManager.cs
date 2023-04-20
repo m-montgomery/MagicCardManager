@@ -49,6 +49,12 @@ public class JSONManager : IDataManager
         }
     }
 
+    public ICollection<CardCorrection> ImportCorrections(string source)
+    {
+        // not implemented
+        return new List<CardCorrection>();
+    }
+
     public bool Export(IDictionary<string, Card> cards, string destination) 
     {
         // not implemented
